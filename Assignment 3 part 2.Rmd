@@ -1,0 +1,91 @@
+---
+title: "Assignment 3 - Part 2 - Diagnosing Schizophrenia from Voice"
+author: "Riccardo Fusaroli"
+date: "October 17, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Assignment 3 - Part 2 - Diagnosing schizophrenia from voice
+
+In the previous part of the assignment you generated a bunch of "features", that is, of quantitative descriptors of voice in schizophrenia. We then looked at whether we could replicate results from the previous literature.
+We now want to know whether we can automatically diagnose schizophrenia from voice only, that is, relying on the set of features you produced last time, we will try to produce an automated classifier.
+Again, remember that the dataset containst 7 studies and 3 languages. Feel free to only include Danish (Study 1-4) if you feel that adds too much complexity.
+
+Issues to be discussed your report:
+- Should you run the analysis on all languages/studies at the same time? 
+- Choose your best acoustic feature from part 1. How well can you diagnose schizophrenia just using it?
+- Identify the best combination of acoustic features to diagnose schizophrenia using logistic regression.
+- Discuss the "classification" process: which methods are you using? Which confounds should you be aware of? What are the strength and limitation of the analysis?
+- Bonus question: Logistic regression is only one of many classification algorithms. Try using others and compare performance. Some examples: Discriminant Function, Random Forest, Support Vector Machine, etc. The package caret provides them. 
+- Bonus Bonus question: It is possible combine the output of multiple  classification models to improve classification accuracy. For inspiration see,
+https://machinelearningmastery.com/machine-learning-ensembles-with-r/
+ The interested reader might also want to look up 'The BigChaos Solution to the Netflix Grand Prize'
+
+## Learning objectives
+- Learn the basics of classification in a machine learning framework
+- Design, fit and report logistic regressions
+- Apply feature selection techniques
+
+### Let's start
+
+We first want to build a logistic regression to see whether you can diagnose schizophrenia from your best acoustic feature. Let's use the full dataset and calculate the different performance measures (accuracy, sensitivity, specificity, PPV, NPV, ROC curve). You need to think carefully as to how we should (or not) use study and subject ID.
+
+Then cross-validate the logistic regression and re-calculate performance on the testing folds. N.B. The cross-validation functions you already have should be tweaked: you need to calculate these new performance measures. Alternatively, the groupdata2 and cvms package created by Ludvig are an easy solution. 
+
+N.B. the predict() function generates log odds (the full scale between minus and plus infinity). Log odds > 0 indicates a choice of 1, below a choice of 0.
+N.N.B. you need to decide whether calculate performance on each single test fold or save all the prediction for test folds in one datase, so to calculate overall performance.
+N.N.N.B. Now you have two levels of structure: subject and study. Should this impact your cross-validation?
+N.N.N.N.B. A more advanced solution could rely on the tidymodels set of packages (warning: Time-consuming to learn as the documentation is sparse, but totally worth it)
+
+
+
+```{r}
+# Let's load the data and packages:
+pacman::p_load(pacman, backports,tidyverse, stringi, stringr, purrr, lme4, janitor, plyr, caret, e1071, yardstick)
+
+
+all_data <- read.csv("Fully Merged Data.csv")
+all_data[,1] <- NULL
+all_data$soundname <- NULL
+
+all_data$Diagnosis <- all_data$Diagnosis %>% as.factor() %>% revalue(c("0"="Control", "1" = "Schizophrenia")) 
+
+
+pred_CV <- glm(Diagnosis ~ CV, family = "binomial", data = all_data)
+summary(pred_CV)
+
+
+all_data$PredictPerc=predict(pred_CV)
+all_data$Predictions[all_data$PredictPerc>0.5]="Schizophrenia"
+all_data$Predictions[all_data$PredictPerc<=0.5]="Control"
+all_data$Predictions <- all_data$Predictions %>% as.factor()
+confusionMatrix(data = all_data$Predictions, reference = all_data$Diagnosis, positive = "Schizophrenia") 
+
+
+all_data$Predictions
+
+yardstick::metrics(all_data, truth = Diagnosis, estimate = Predictions) %>% knitr::kable()
+
+
+
+
+
+CV_mod <- lmerTest::lmer(CV ~ 0 + Study + Study:Diagnosis + (1 + Diagnosis|Participant), data = all_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
+summary(CV_mod)  #Not a lot of significant effects of diagnosis (only study 4), but by far most of the null results are in the same direction, indicating an overall effect. 
+#Indeed, when all the data are pooled together, you get:
+
+CV_mod2 <- lmerTest::lmer(CV ~ 0 + Diagnosis + (1 + Diagnosis|Participant), data = all_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
+summary(CV_mod2) #An overall significant effect of Diagnosis on pitch variability. Interestingly, though... it is in a positive direction. Seemingly the results of study 5 drags it barely above 0. Somehow.
+
+### Speech proportion. Surely this has to be relative, right?
+
+
+glm()
+
+
+```
+
