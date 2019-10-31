@@ -45,7 +45,7 @@ N.N.N.N.B. A more advanced solution could rely on the tidymodels set of packages
 
 ```{r}
 # Let's load the data and packages:
-pacman::p_load(pacman, backports,tidyverse, stringi, stringr, purrr, lme4, janitor, plyr, caret, e1071, yardstick, boot)
+pacman::p_load(pacman, backports,tidyverse, stringi, stringr, purrr, lme4, janitor, plyr, caret, e1071, yardstick, boot, cvms, groupdata2)
 
 
 scaled_data <- read.csv("Scaled Data.csv"); scaled_data[,1] <- NULL ; scaled_data$soundname <- NULL ; scaled_data$Study <- scaled_data$Study %>% as.factor()
@@ -81,18 +81,20 @@ DF_df %>% group_by(Predictions) %>% dplyr::summarize(n = n())
 
 #
 
-danish_folds <- fold(data_train, k = 5, cat_col = "Diagnosis", id_col = "Child.ID") %>% arrange(.folds)
+danish_folds <- fold(DF_df, k = 10, cat_col = "Diagnosis", id_col = "ID") %>% arrange(.folds)
+danish_folds$Diagnosis <- danish_folds$Diagnosis %>% revalue(c("Control" = "0", "Schizophrenia" = "1")) ; danish_folds$Diagnosis <- danish_folds$Diagnosis %>% as.factor()
 
-RMSE2 <- numeric(5)
-for(i in 1:5){
+
+RMSE <- numeric(10)
+for(i in 1:10){
   #Make two subsets:
-  test_df <- folded_1 %>%  subset(.folds == i)
-  train_df <- folded_1 %>%  subset(.folds != i)
+  test_df <- danish_folds %>%  subset(.folds == i)
+  train_df <- danish_folds %>%  subset(.folds != i)
   # make a model where you regress the train_df
-  mod <- lmerTest::lmer(CHI_MLU ~ Visit*Diagnosis + verbalIQ1 + MOT_MLU + (1|Child.ID) + (0 + Visit|Child.ID), data = train_df, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
+  mod <- glmer(Diagnosis ~ Speechrate + (1+ Speechrate|ID), family = "binomial", data = train_df, control = glmerControl(optimizer = "nloptwrap", calc.derivs = FALSE, optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
   #predict "test_df" based on "mod"
   prediction <- predict(mod, test_df, allow.new.levels = TRUE)
-  RMSE2[i] <- rmse(test_df$CHI_MLU, prediction)
+  RMSE[i] <- rmse(test_df$Diagnosis, prediction)
 }
 
 all_data$Predictions
