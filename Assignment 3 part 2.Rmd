@@ -45,7 +45,7 @@ N.N.N.N.B. A more advanced solution could rely on the tidymodels set of packages
 
 ```{r}
 # Let's load the data and packages:
-pacman::p_load(pacman, backports,tidyverse, stringi, stringr, purrr, lme4, janitor, plyr, caret, e1071, yardstick, boot, cvms, groupdata2)
+pacman::p_load(pacman, backports,tidyverse, stringi, stringr, purrr, lme4, janitor, plyr, caret, e1071, yardstick, boot, cvms, groupdata2, ROCR, knitr)
 
 
 scaled_data <- read.csv("Scaled Data.csv"); scaled_data[,1] <- NULL ; scaled_data$soundname <- NULL ; scaled_data$Study <- scaled_data$Study %>% as.factor()
@@ -67,17 +67,65 @@ inv.logit(-13.780411+ (0.55112*100)) # You p
 
 DF_df <- scaled_data %>% filter(Study != 5) %>% filter(Study != 6) %>% filter(Study != 7)
 
-sr_danish <- glmer(Diagnosis ~ Speechrate + (1+ Speechrate|ID), family = "binomial", data = DF_df, control = glmerControl(optimizer = "nloptwrap", calc.derivs = FALSE, optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
+sr_danish <- glmer(Diagnosis ~ Speechrate + (1|ID), family = "binomial", data = DF_df, control = glmerControl(optimizer = "nloptwrap", calc.derivs = FALSE, optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
 summary(sr_danish)
 
 # The following code leads to weirdly accurate results.
-DF_df$PredictPerc=predict(sr_danish)
+DF_df$PredictPerc=inv.logit(predict(sr_danish))
 DF_df$Predictions[DF_df$PredictPerc>0.5]="Schizophrenia"
 DF_df$Predictions[DF_df$PredictPerc<=0.5]="Control"
 DF_df$Predictions <- DF_df$Predictions %>% as.factor()
 confusionMatrix(data = DF_df$Predictions, reference = DF_df$Diagnosis, positive = "Schizophrenia") 
 
-DF_df %>% group_by(Predictions) %>% dplyr::summarize(n = n())
+# Paste here
+
+# Set seed for reproducibility
+set.seed(7)
+
+# Fold data 
+danish_folds <- fold(DF_df, k = 10, cat_col = "Diagnosis", id_col = "ID") %>% arrange(.folds)
+
+# Glmer cross validation
+CV2 <- cross_validate(danish_folds, "Diagnosis ~ Speechrate + (1|ID)",
+                      fold_cols = '.folds',
+                      family = 'binomial')
+# Show results
+summary(CV2)
+
+CV2 %>% select(1:9)
+
+CV2 %>% select(10:14)
+
+CV2$ROC[[1]] %>% head()
+
+c_matrix <- CV2$`Confusion Matrix`[[1]]
+
+# A nested tibble with the confusion matrix. The Pos_ columns tells you whether a row is a True
+# Positive (TP), True Negative (TN), False Positive (FP), or False Negative (FN), depending on
+# which level is the "positive" class. I.e. the level you wish to predict.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #
 
@@ -86,7 +134,8 @@ danish_folds$Diagnosis <- danish_folds$Diagnosis %>% revalue(c("Control" = "0", 
 
 
 RMSE <- numeric(10)
-for(i in 1:10){
+
+for(i in 1){
   #Make two subsets:
   test_df <- danish_folds %>%  subset(.folds == i)
   train_df <- danish_folds %>%  subset(.folds != i)
@@ -94,8 +143,44 @@ for(i in 1:10){
   mod <- glmer(Diagnosis ~ Speechrate + (1+ Speechrate|ID), family = "binomial", data = train_df, control = glmerControl(optimizer = "nloptwrap", calc.derivs = FALSE, optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
   #predict "test_df" based on "mod"
   prediction <- predict(mod, test_df, allow.new.levels = TRUE)
-  RMSE[i] <- rmse(test_df$Diagnosis, prediction)
+  prediction[prediction > 0.5 ] = "Schizophrenia"
+  prediction[prediction <= 0.5 ] = "Control"
+  conMat <- confusionMatrix(data = prediction, reference = DF_df$Diagnosis, positive = "Schizophrenia")
 }
+
+
+#Make two subsets:
+  test_df <- danish_folds %>%  subset(.folds == 1)
+  train_df <- danish_folds %>%  subset(.folds != 1)
+  # make a model where you regress the train_df
+  mod <- glmer(Diagnosis ~ Speechrate + (1+ Speechrate|ID), family = "binomial", data = train_df, control = glmerControl(optimizer = "nloptwrap", calc.derivs = FALSE, optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
+  #predict "test_df" based on "mod"
+  prediction <- predict(mod, test_df, allow.new.levels = TRUE)
+  prediction <- inv.logit(prediction)
+  prediction[prediction <= 0.5 ] = "Control"
+  prediction[prediction > 0.5 ] = "Schizophrenia"
+  prediction <- prediction %>% as.factor()
+  conMat <- confusionMatrix(data = prediction, reference = test_df$Diagnosis, positive = "Schizophrenia")
+
+conMat
+
+
+?list
+
+
+
+
+# The following code leads to weirdly accurate results.
+DF_df$PredictPerc=predict(sr_danish)
+DF_df$Predictions[DF_df$PredictPerc>0.5]="Schizophrenia"
+DF_df$Predictions[DF_df$PredictPerc<=0.5]="Control"
+DF_df$Predictions <- DF_df$Predictions %>% as.factor()
+confusionMatrix(data = DF_df$Predictions, reference = DF_df$Diagnosis, positive = "Schizophrenia") 
+
+
+
+
+
 
 all_data$Predictions
 
