@@ -286,16 +286,7 @@ bydiag <- all_dataNA %>% group_by(Diagnosis) %>% dplyr::summarise(n = n(), Femal
 bystudy <- all_dataNA %>% group_by(Diagnosis, Study) %>% dplyr::summarise(n = n(), FemaleN = sum(Gender == "F"), Meanage = mean(Age), MeanSANS = mean(SANS), MeanSAPS = mean(SAPS))
 # We can only make schizophrenia/control comparisons for studies 1, 2 and 4. Studies 3 and 7 have disappeared entirely when we removed NA's, and 5 and 6 apparantly had no demographic data for their controls.
 # The gender imbalance pattern is fairly consistent across studies. Generally, there are noticeably more male schizophrenics and controls. The age-matching is also consistent, with mean age for all studies being around the early to middle 20's (study 6 does have a mean age of 28, however.)
-#Mean SAPS and SANS are, unsurprisingly, very small (close to 0)
-
-
-
-
-
-
-## We've already cleaned away participant 31, and by the way the merge function works, by definition we must have data on duration AND pitch for all the participants left.
-
-# We have to keep in mind, though, that if we wish to analyze any demographic variables, our dataset will shrink, as there are plenty of NA's in the demographic dataset (study 7 basically doesn't report any demographic data period).
+#Mean SAPS and SANS are, unsurprisingly, very small (close to 0) in controls and much higher in controls. Interestingly, the intensity of both positive and negative systems fluctuate a lot between studies, though not in any clear systematic fashion.
 ```
 
 ## Now we can analyze the data
@@ -317,62 +308,138 @@ N.N.N.B. If you want to estimate the studies separately, you can try this syntax
 ```{r}
 ###SETTING UP BASIC MODELS
 
-#We are now ready to begin the analysis. First things first: We want to see if there are reliable differences in the above features based on diagnosis. Thus, we set up the following models:
+# Another line for loading packages, to make working within each code block easier.
+pacman::p_load(pacman, tidyverse, stringi, stringr, purrr, dplyr,lmerTest,ggpubr,emmeans)
 
-# Until we know better, we will use the Coefficient of Variation for analyzing pitch variability.
+# Same thing with our merged data.
+all_data <- read.csv("Fully Merged Data.csv")
+# Removing now useless columns (X, Participant, and soundname)
+all_data[,c(1,4,6)] <- NULL
 
-# Do we want to test individually for each study? What would be the reasoning behind this? Different methodology, perhaps.
+#We are now ready to begin the analysis. First things first: We want to see if there are reliable differences in the above features based on diagnosis. 
 
-## We forgot the number 1 rule!
+### DEFINING VARIABLES OF INTEREST
 
-pitch_plot <- ggplot(all_data, aes(CV, Diagnosis, colour = Study)); pitch_plot + geom_smooth(method = "lm")
+## Pitch variability
 
-# Loading packages
-p_load(lmerTest,ggpubr,emmeans)
+# We have already defined a measure of pitch variability, the Coefficient of Variance (CV). No further coding needed.
 
-#use ggline to make nice line plot. Install ggpubr, if you haven't got it
+## Speech proportion
 
-all_data$Diagnosis <- as.factor(all_data$Diagnosis)
-all_data$Study <- as.factor(all_data$Study)
-ggline(all_data, x = "Diagnosis", y = "CV",col='Study', add = c("mean_se", "dodge"), palette = "jco")
-
-
-CV_mod <- lmerTest::lmer(CV ~ 0 + Study + Study:Diagnosis + (1 + Diagnosis|Participant), data = all_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
-summary(CV_mod)  #Not a lot of significant effects of diagnosis (only study 4), but by far most of the null results are in the same direction, indicating an overall effect. 
-#Indeed, when all the data are pooled together, you get:
-
-CV_mod2 <- lmerTest::lmer(CV ~ 0 + Diagnosis + (1 + Diagnosis|Participant), data = all_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
-summary(CV_mod2) #An overall significant effect of Diagnosis on pitch variability. Interestingly, though... it is in a positive direction. Seemingly the results of study 5 drags it barely above 0. Somehow.
-
-### Speech proportion. Surely this has to be relative, right?
+# If we want a proportional measure of speech, it can be calculated as the amount of time the participant speaks, divided by the total time of the recording.
 
 all_data$Speech_Prop <- all_data$phonationtime..s./all_data$dur..s.
 
+## Speechrate
 
-ggline(all_data, x = "Diagnosis", y = "Speech_Prop",col='Study', add = c("mean_se", "dodge"), palette = "jco")
+# Speechrate is fortunately already defined as number of syllables over the duration of the recording, and encoded in the torturously named variable speechrate..nsyll.dur. 
+
+colnames(all_data)[8] <- "Speechrate"
+
+## Pause Duration
+
+# Average Pause duration is defined as (Duration - Spoken Duration) / PauseN, in other words:
+
+# Since some of the participants have 0 pauses (somehow) on some of their trials, this creates mathematical problems when defining pause duration (division by 0). Thus, we remove all the rows where npause = 0.
+
+no_zeros <- all_data %>% subset(npause != 0)
+
+no_zeros$P_Dur <- (no_zeros$dur..s. - no_zeros$phonationtime..s.) / no_zeros$npause
 
 
+### SCALING THE FIRST THREE VARIABLES ACCORDING TO LANGUAGE
 
-prop_mod <- lmerTest::lmer(Speech_Prop ~ 0 + Study + Study:Diagnosis + (1 + Diagnosis|Participant), data = all_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
+## Separating the languages
+danish <- all_data %>% filter(Language == "Danish")
+chinese <- all_data %>% filter(Language == "Chinese")
+japanese <- all_data %>% filter(Language == "Japanese")
+
+## Scaling the variables of interest for each data frame:
+
+danish$CV <- scale(danish$CV); danish$Speechrate <- scale(danish$Speechrate) ; danish$Speech_Prop <- scale(danish$Speech_Prop)
+
+chinese$CV <- scale(chinese$CV); chinese$Speechrate <- scale(chinese$Speechrate) ; chinese$Speech_Prop <- scale(chinese$Speech_Prop)
+
+japanese$CV <- scale(japanese$CV); japanese$Speechrate <- scale(japanese$Speechrate) ; japanese$Speech_Prop <- scale(japanese$Speech_Prop)
+
+scaled_data <- rbind(danish, chinese, japanese)
+
+#Saving and reloading
+write.csv(scaled_data, "Scaled Data.csv")
+
+scaled_data <- read.csv("Scaled Data.csv")
+scaled_data[,1] <- NULL
+
+### SCALING P_DUR
+
+danish <- no_zeros %>% filter(Language == "Danish")
+chinese <- no_zeros %>% filter(Language == "Chinese")
+japanese <- no_zeros %>% filter(Language == "Japanese")
+
+## Scaling the variables of interest for each data frame:
+
+danish$P_Dur <- scale(danish$P_Dur) ; chinese$P_Dur <- scale(chinese$P_Dur) ; japanese$P_Dur <- scale(japanese$P_Dur)
+no_zeros <- rbind(danish, chinese, japanese)
+
+### ACTUAL MODEL TIME
+
+scaled_data$Diagnosis <- as.factor(scaled_data$Diagnosis)
+scaled_data$Study <- as.factor(scaled_data$Study)
+
+ggline(scaled_data, x = "Diagnosis", y = "CV",col='Study', add = c("mean_se", "dodge"), palette = "jco")
+
+## Coefficient of variance
+
+CV_mod <- lmerTest::lmer(CV ~ 0 + Study + Study:Diagnosis + (1 + Diagnosis|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
+summary(CV_mod)  #Not a lot of significant effects of diagnosis (only study 4), but by far most of the null results are in the same direction, indicating an overall effect. 
+#Indeed, when all the data are pooled together, you get:
+
+CV_mod2 <- lmerTest::lmer(CV ~ 0 + Diagnosis + (1 + Diagnosis|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
+summary(CV_mod2) # An overall significant effect of Diagnosis on pitch variability... but a very small effect size. As the plot and the first model demonstrates, the effect size (and direction!) are both rather inconsistent.
+
+
+## Speech Proportion
+
+ggline(scaled_data, x = "Diagnosis", y = "Speech_Prop",col='Study', add = c("mean_se", "dodge"), palette = "jco") # Ouch. This looks very inconsistent. Let's have a look at the model.
+
+### ASK SOMEONE ABOUT CONVERGENCE ISSUES NEXT TIME WE HAVE THE CHANCE!!!
+
+prop_mod <- lmerTest::lmer(Speech_Prop ~ 0 + Study + Study:Diagnosis + (1 + Diagnosis|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
 summary(prop_mod)  #No significant effects, and results go in rather different directions.
+
 #Pooled together:
+prop_mod2 <- lmerTest::lmer(Speech_Prop ~ 0 + Diagnosis + (1 + Diagnosis|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
+summary(prop_mod2) # Non-significant.
 
-prop_mod2 <- lmerTest::lmer(Speech_Prop ~ 0 + Diagnosis + (1 + Diagnosis|Participant), data = all_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
-summary(prop_mod2) # Again, somehow we get it in a positive direction.
+## Speechrate
 
-# Let's try to scale the variable
+ggline(scaled_data, x = "Diagnosis", y = "Speechrate",col='Study', add = c("mean_se", "dodge"), palette = "jco")
 
-all_data$Speech_Prop <- all_data$Speech_Prop %>% scale()
+sr_mod <- lmerTest::lmer(Speechrate ~ 0 + Study + Study:Diagnosis + (1 + Diagnosis|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
+summary(sr_mod) #Three significant effects + many of the null results go in the expected direction.
 
-prop_mod3 <- lmerTest::lmer(Speech_Prop ~ 0 + Diagnosis + (1 + Diagnosis|Participant), data = all_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
-summary(prop_mod3)
+sr_mod2 <- lmerTest::lmer(Speechrate ~ 0 + Diagnosis + (1 + Diagnosis|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
+summary(sr_mod2)
+
+## Pause Duration
+
+# Since some of the participants have 0 pauses (somehow) on some of their trials, this creates mathematical problems when defining pause duration (division by 0). Thus, we remove all the rows where npause = 0.
+no_zeros <- scaled_data %>% subset(npause != 0)
+
+no_zeros$Diagnosis <- no_zeros$Diagnosis %>% as.factor()
+no_zeros$Study <- no_zeros$Study %>% as.factor()
+
+ggline(no_zeros, x = "Diagnosis", y = "P_Dur",col='Study', add = c("mean_se", "dodge"), palette = "jco")
+
+sr_mod <- lmerTest::lmer(Speechrate ~ 0 + Study + Study:Diagnosis + (1 + Diagnosis|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
+summary(sr_mod)
+
+sr_mod2 <- lmerTest::lmer(Speechrate ~ 0 + Diagnosis + (1 + Diagnosis|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
+summary(sr_mod2)
 
 
-all_data$speechrate..nsyll.dur. <- all_data$Speech_Prop %>% scale()
-
-rate_mod <- lmerTest::lmer(speechrate..nsyll.dur. ~ 0 + Diagnosis + (1 + Diagnosis|Participant), data = all_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
-summary(prop_mod4)
-
+#use ggline to make nice line plot. Install ggpubr, if you haven't got it
+pitch_plot <- ggplot(all_data, aes(CV, Diagnosis, colour = Study)); pitch_plot + geom_smooth(method = "lm")
 
 ```
 

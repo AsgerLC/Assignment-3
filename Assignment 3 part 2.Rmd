@@ -45,26 +45,55 @@ N.N.N.N.B. A more advanced solution could rely on the tidymodels set of packages
 
 ```{r}
 # Let's load the data and packages:
-pacman::p_load(pacman, backports,tidyverse, stringi, stringr, purrr, lme4, janitor, plyr, caret, e1071, yardstick)
+pacman::p_load(pacman, backports,tidyverse, stringi, stringr, purrr, lme4, janitor, plyr, caret, e1071, yardstick, boot)
 
 
-all_data <- read.csv("Fully Merged Data.csv")
-all_data[,1] <- NULL
-all_data$soundname <- NULL
-
-all_data$Diagnosis <- all_data$Diagnosis %>% as.factor() %>% revalue(c("0"="Control", "1" = "Schizophrenia")) 
+scaled_data <- read.csv("Scaled Data.csv"); scaled_data[,1] <- NULL ; scaled_data$soundname <- NULL ; scaled_data$Study <- scaled_data$Study %>% as.factor()
 
 
-pred_CV <- glm(Diagnosis ~ CV, family = "binomial", data = all_data)
-summary(pred_CV)
+# Making a model with
+sr_pred <- glmer(Diagnosis ~ Study + Study:Speechrate + (1|ID), family = "binomial", data = scaled_data, control = glmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
+summary(sr_pred)
 
 
-all_data$PredictPerc=predict(pred_CV)
-all_data$Predictions[all_data$PredictPerc>0.5]="Schizophrenia"
-all_data$Predictions[all_data$PredictPerc<=0.5]="Control"
-all_data$Predictions <- all_data$Predictions %>% as.factor()
-confusionMatrix(data = all_data$Predictions, reference = all_data$Diagnosis, positive = "Schizophrenia") 
 
+# For when we want to interpret the results 
+inv.logit(-13.780411)
+inv.logit(-13.780411+ (0.55112*100)) # You p
+
+#we have decided to exclude studies that are not in Danish, as by doing so we can decide not to discriminate by study, as the heterogeneity due to difference speechrates etc. of different languages is not present. By doing so, we also achieve a bigger sample size by doing so. It can still make sense to discriminate by study as there are differences between studies in how they collected data, etc.
+
+# We chose not to discriminate between studies, under the assumption that their methodologies are essentially comparable. If that was not the case, we shouldn't be comparing them at all.
+
+DF_df <- scaled_data %>% filter(Study != 5) %>% filter(Study != 6) %>% filter(Study != 7)
+
+sr_danish <- glmer(Diagnosis ~ Speechrate + (1+ Speechrate|ID), family = "binomial", data = DF_df, control = glmerControl(optimizer = "nloptwrap", calc.derivs = FALSE, optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
+summary(sr_danish)
+
+# The following code leads to weirdly accurate results.
+DF_df$PredictPerc=predict(sr_danish)
+DF_df$Predictions[DF_df$PredictPerc>0.5]="Schizophrenia"
+DF_df$Predictions[DF_df$PredictPerc<=0.5]="Control"
+DF_df$Predictions <- DF_df$Predictions %>% as.factor()
+confusionMatrix(data = DF_df$Predictions, reference = DF_df$Diagnosis, positive = "Schizophrenia") 
+
+DF_df %>% group_by(Predictions) %>% dplyr::summarize(n = n())
+
+#
+
+danish_folds <- fold(data_train, k = 5, cat_col = "Diagnosis", id_col = "Child.ID") %>% arrange(.folds)
+
+RMSE2 <- numeric(5)
+for(i in 1:5){
+  #Make two subsets:
+  test_df <- folded_1 %>%  subset(.folds == i)
+  train_df <- folded_1 %>%  subset(.folds != i)
+  # make a model where you regress the train_df
+  mod <- lmerTest::lmer(CHI_MLU ~ Visit*Diagnosis + verbalIQ1 + MOT_MLU + (1|Child.ID) + (0 + Visit|Child.ID), data = train_df, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
+  #predict "test_df" based on "mod"
+  prediction <- predict(mod, test_df, allow.new.levels = TRUE)
+  RMSE2[i] <- rmse(test_df$CHI_MLU, prediction)
+}
 
 all_data$Predictions
 
