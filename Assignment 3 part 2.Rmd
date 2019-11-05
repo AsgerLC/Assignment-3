@@ -45,48 +45,62 @@ N.N.N.N.B. A more advanced solution could rely on the tidymodels set of packages
 
 ```{r}
 # Let's load the data and packages:
-pacman::p_load(pacman, backports,tidyverse, stringi, stringr, purrr, lme4, janitor, plyr, caret, e1071, yardstick, boot, cvms, groupdata2, ROCR, knitr)
+pacman::p_load(pacman, backports,tidyverse, stringi, stringr, purrr, lme4, janitor, plyr, caret, e1071, yardstick, boot, cvms, groupdata2, pROC, knitr)
 
 
 scaled_data <- read.csv("Scaled Data.csv"); scaled_data[,1] <- NULL ; scaled_data$soundname <- NULL ; scaled_data$Study <- scaled_data$Study %>% as.factor()
 
 
-# Making a model with
-sr_pred <- glmer(Diagnosis ~ Study + Study:Speechrate + (1|ID), family = "binomial", data = scaled_data, control = glmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
-summary(sr_pred)
+# Making a model with speechrate as a predictor of diagnosis, descriminating for each study.
+sr_pred <- glm(Diagnosis ~ 0 + Study + Study:Speechrate, family = "binomial", data = scaled_data)
+summary(sr_pred) # Most of the studies have a negative slope (and study 6 has a very small positive one). Of the 7 studies, studies 2,3,4 and 7 show significant relations between speechrate and logOdds of being schizophrenic. SPecifically, as speechrate increases, participants are *slightly* less likely to be schizophrenic.
 
 
+# If we wanted to interpret the results as probabilities, we can use the following function for any given value of speechrate: 
 
-# For when we want to interpret the results 
-inv.logit(-13.780411)
-inv.logit(-13.780411+ (0.55112*100)) # You p
+#inv.logit(Intercept + slope*x)
 
-#we have decided to exclude studies that are not in Danish, as by doing so we can decide not to discriminate by study, as the heterogeneity due to difference speechrates etc. of different languages is not present. By doing so, we also achieve a bigger sample size by doing so. It can still make sense to discriminate by study as there are differences between studies in how they collected data, etc.
+# We have decided to exclude studies that are not in Danish, as by doing so we can decide not to discriminate by study, as the heterogeneity due to different speechrates etc. of different languages is not present. By adding all the danish studies together, we also achieve a larger dataset. We assume that the methodologies (data collection procedures, etc.) of the Danish studies are essentially comparable.
 
-# We chose not to discriminate between studies, under the assumption that their methodologies are essentially comparable. If that was not the case, we shouldn't be comparing them at all.
-
+# Filtering study 5, 6 and 7 away.
 DF_df <- scaled_data %>% filter(Study != 5) %>% filter(Study != 6) %>% filter(Study != 7)
 
-sr_danish <- glmer(Diagnosis ~ Speechrate + (1|ID), family = "binomial", data = DF_df, control = glmerControl(optimizer = "nloptwrap", calc.derivs = FALSE, optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
+# Now we try to make a model of diagnosis and speechrate using only the danish data.
+sr_danish <- glm(Diagnosis ~ Speechrate, family = "binomial", data = DF_df)
 summary(sr_danish)
+# Significant results; as speechrate increases, logOdds of schizophrenia decrease.
 
-# The following code leads to weirdly accurate results.
-DF_df$PredictPerc=inv.logit(predict(sr_danish))
-DF_df$Predictions[DF_df$PredictPerc>0.5]="Schizophrenia"
-DF_df$Predictions[DF_df$PredictPerc<=0.5]="Control"
+# Creating a confusion matrix to estimate performance measures
+DF_df$PredictPerc = inv.logit(predict(sr_danish))
+DF_df$Predictions[DF_df$PredictPerc>0.5] = "Schizophrenia"
+DF_df$Predictions[DF_df$PredictPerc<=0.5] = "Control"
 DF_df$Predictions <- DF_df$Predictions %>% as.factor()
 confusionMatrix(data = DF_df$Predictions, reference = DF_df$Diagnosis, positive = "Schizophrenia") 
 
-# Paste here
+# We get the following performance numbers:
+
+### Accuracy : 0.57, 0.564
+### Sensitivity : 0.427
+### Specificity : 0.7
+### PPV : 0.564
+### NPV : 0.573
+
+rocCurve <- roc(response = DF_df$Diagnosis, predictor = DF_df$PredictPerc)
+auc(rocCurve)
+ci(rocCurve)
+plot(rocCurve, legacy.axes = TRUE)
+
+#Area under the roc curve: 0.586, CI : 0.56 - 0.611
+
 
 # Set seed for reproducibility
 set.seed(7)
 
-# Fold data 
+# Folding the data. "cat_col" specifies a categorical variable that must be balanced in all the folds. "id_col" specifies a variable indicating datapoints belonging to the same ID (thus, they must be in the same fold). This helps us take into account that the experiments is repeated measures (we make up for the fact that we are breaking the asumption of independence).
 danish_folds <- fold(DF_df, k = 10, cat_col = "Diagnosis", id_col = "ID") %>% arrange(.folds)
 
 # Glmer cross validation
-CV2 <- cross_validate(danish_folds, "Diagnosis ~ Speechrate + (1|ID)",
+CV2 <- cross_validate(danish_folds, "Diagnosis ~ Speechrate",
                       fold_cols = '.folds',
                       family = 'binomial')
 # Show results
@@ -94,36 +108,26 @@ summary(CV2)
 
 CV2 %>% select(1:9)
 
+### Balanced Accuracy : 0.562
+### Sensitivity : 0.43
+### Specificity : 0.695
+### PPV : 0.562
+### NPV : 0.573
+### AUC(ROC) : 0.58 (0.554 - 0.605) 
+
 CV2 %>% select(10:14)
 
 CV2$ROC[[1]] %>% head()
 
-c_matrix <- CV2$`Confusion Matrix`[[1]]
+SensSpec <- CV2$ROC[[1]]
+
+plot((1- SensSpec$Specificities), SensSpec$Sensitivities)
+
+CV2$`Confusion Matrix`[[1]]
 
 # A nested tibble with the confusion matrix. The Pos_ columns tells you whether a row is a True
 # Positive (TP), True Negative (TN), False Positive (FP), or False Negative (FN), depending on
 # which level is the "positive" class. I.e. the level you wish to predict.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -133,74 +137,7 @@ danish_folds <- fold(DF_df, k = 10, cat_col = "Diagnosis", id_col = "ID") %>% ar
 danish_folds$Diagnosis <- danish_folds$Diagnosis %>% revalue(c("Control" = "0", "Schizophrenia" = "1")) ; danish_folds$Diagnosis <- danish_folds$Diagnosis %>% as.factor()
 
 
-RMSE <- numeric(10)
 
-for(i in 1){
-  #Make two subsets:
-  test_df <- danish_folds %>%  subset(.folds == i)
-  train_df <- danish_folds %>%  subset(.folds != i)
-  # make a model where you regress the train_df
-  mod <- glmer(Diagnosis ~ Speechrate + (1+ Speechrate|ID), family = "binomial", data = train_df, control = glmerControl(optimizer = "nloptwrap", calc.derivs = FALSE, optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
-  #predict "test_df" based on "mod"
-  prediction <- predict(mod, test_df, allow.new.levels = TRUE)
-  prediction[prediction > 0.5 ] = "Schizophrenia"
-  prediction[prediction <= 0.5 ] = "Control"
-  conMat <- confusionMatrix(data = prediction, reference = DF_df$Diagnosis, positive = "Schizophrenia")
-}
-
-
-#Make two subsets:
-  test_df <- danish_folds %>%  subset(.folds == 1)
-  train_df <- danish_folds %>%  subset(.folds != 1)
-  # make a model where you regress the train_df
-  mod <- glmer(Diagnosis ~ Speechrate + (1+ Speechrate|ID), family = "binomial", data = train_df, control = glmerControl(optimizer = "nloptwrap", calc.derivs = FALSE, optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
-  #predict "test_df" based on "mod"
-  prediction <- predict(mod, test_df, allow.new.levels = TRUE)
-  prediction <- inv.logit(prediction)
-  prediction[prediction <= 0.5 ] = "Control"
-  prediction[prediction > 0.5 ] = "Schizophrenia"
-  prediction <- prediction %>% as.factor()
-  conMat <- confusionMatrix(data = prediction, reference = test_df$Diagnosis, positive = "Schizophrenia")
-
-conMat
-
-
-?list
-
-
-
-
-# The following code leads to weirdly accurate results.
-DF_df$PredictPerc=predict(sr_danish)
-DF_df$Predictions[DF_df$PredictPerc>0.5]="Schizophrenia"
-DF_df$Predictions[DF_df$PredictPerc<=0.5]="Control"
-DF_df$Predictions <- DF_df$Predictions %>% as.factor()
-confusionMatrix(data = DF_df$Predictions, reference = DF_df$Diagnosis, positive = "Schizophrenia") 
-
-
-
-
-
-
-all_data$Predictions
-
-yardstick::metrics(all_data, truth = Diagnosis, estimate = Predictions) %>% knitr::kable()
-
-
-
-
-
-CV_mod <- lmerTest::lmer(CV ~ 0 + Study + Study:Diagnosis + (1 + Diagnosis|Participant), data = all_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
-summary(CV_mod)  #Not a lot of significant effects of diagnosis (only study 4), but by far most of the null results are in the same direction, indicating an overall effect. 
-#Indeed, when all the data are pooled together, you get:
-
-CV_mod2 <- lmerTest::lmer(CV ~ 0 + Diagnosis + (1 + Diagnosis|Participant), data = all_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
-summary(CV_mod2) #An overall significant effect of Diagnosis on pitch variability. Interestingly, though... it is in a positive direction. Seemingly the results of study 5 drags it barely above 0. Somehow.
-
-### Speech proportion. Surely this has to be relative, right?
-
-
-glm()
 
 
 ```
