@@ -336,17 +336,6 @@ all_data$Speech_Prop <- all_data$phonationtime..s./all_data$dur..s.
 
 colnames(all_data)[8] <- "Speechrate"
 
-## Pause Duration
-
-# Average Pause duration is defined as (Duration - Spoken Duration) / PauseN, in other words:
-
-# Since some of the participants have 0 pauses (somehow) on some of their trials, this creates mathematical problems when defining pause duration (division by 0). Thus, we remove all the rows where npause = 0.
-
-no_zeros <- all_data %>% subset(npause != 0)
-
-no_zeros$P_Dur <- (no_zeros$dur..s. - no_zeros$phonationtime..s.) / no_zeros$npause
-
-
 ### SCALING THE FIRST THREE VARIABLES ACCORDING TO LANGUAGE
 
 ## Separating the languages
@@ -365,81 +354,94 @@ japanese$CV <- scale(japanese$CV); japanese$Speechrate <- scale(japanese$Speechr
 scaled_data <- rbind(danish, chinese, japanese)
 
 #Saving and reloading
-write.csv(scaled_data, "Scaled Data.csv")
+#write.csv(scaled_data, "Scaled Data.csv")
 
 scaled_data <- read.csv("Scaled Data.csv")
 scaled_data[,1] <- NULL
 
-### SCALING P_DUR
+### PAUSE DURATION
 
+# Average Pause duration is defined as (Duration - Spoken Duration) / PauseN, in other words:
+
+# Since some of the participants have 0 pauses (somehow) on some of their trials, this creates mathematical problems when defining pause duration (division by 0). Thus, we remove all the rows where npause = 0.
+
+no_zeros <- all_data %>% subset(npause != 0)
+
+no_zeros$P_Dur <- (no_zeros$dur..s. - no_zeros$phonationtime..s.) / no_zeros$npause
+
+# Once again, we create a separate dataframe for each language, and scale Pause Duration, before merging them back to one.
 danish <- no_zeros %>% filter(Language == "Danish")
 chinese <- no_zeros %>% filter(Language == "Chinese")
 japanese <- no_zeros %>% filter(Language == "Japanese")
 
-## Scaling the variables of interest for each data frame:
-
 danish$P_Dur <- scale(danish$P_Dur) ; chinese$P_Dur <- scale(chinese$P_Dur) ; japanese$P_Dur <- scale(japanese$P_Dur)
+
 no_zeros <- rbind(danish, chinese, japanese)
+
+#Finally, we ensure that they variables are as they should be.
+no_zeros$Diagnosis <- no_zeros$Diagnosis %>% as.factor()
+no_zeros$Study <- no_zeros$Study %>% as.factor()
+
 
 ### ACTUAL MODEL TIME
 
 scaled_data$Diagnosis <- as.factor(scaled_data$Diagnosis)
 scaled_data$Study <- as.factor(scaled_data$Study)
 
-ggline(scaled_data, x = "Diagnosis", y = "CV",col='Study', add = c("mean_se", "dodge"), palette = "jco")
 
 ## Coefficient of variance
 
-CV_mod <- lmerTest::lmer(CV ~ 0 + Study + Study:Diagnosis + (1 + Diagnosis|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
-summary(CV_mod)  #Not a lot of significant effects of diagnosis (only study 4), but by far most of the null results are in the same direction, indicating an overall effect. 
-#Indeed, when all the data are pooled together, you get:
+# Plotting the data
+ggline(scaled_data, x = "Diagnosis", y = "CV",col='Study', add = c("mean_se", "dodge"), palette = "jco")
 
-CV_mod2 <- lmerTest::lmer(CV ~ 0 + Diagnosis + (1 + Diagnosis|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
-summary(CV_mod2) # An overall significant effect of Diagnosis on pitch variability... but a very small effect size. As the plot and the first model demonstrates, the effect size (and direction!) are both rather inconsistent.
+# Making a model of the Coefficient of Variance, a measure of pitch variability, with a separate estimate for each study and a random intercept for each participant (to account for the fact that the same participant is measured several times)
+CV_mod <- lmerTest::lmer(CV ~ 0 + Study + Study:Diagnosis + (1|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
 
+summary(CV_mod)  #Not a lot of significant effects of diagnosis (only study 4), but by far most of the null results are in the same direction, indicating an overall effect (if a small one). Schizophrenics on average have a smaller CV in 6 out of 7 studies.
+
+# Taking all the data together without discriminating by study, we get:
+
+CV_mod2 <- lmerTest::lmer(CV ~ Diagnosis + (1|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
+summary(CV_mod2) # An overall significant effect of Diagnosis on pitch variability... but a very small effect size. Also, as the plot and the first model demonstrates, there is a good deal of variation in effect sizes, and even the direction of the effect. Not particularly convincing.
+
+# And now we repeat the process for the rest of the variables of interest.
 
 ## Speech Proportion
 
 ggline(scaled_data, x = "Diagnosis", y = "Speech_Prop",col='Study', add = c("mean_se", "dodge"), palette = "jco") # Ouch. This looks very inconsistent. Let's have a look at the model.
 
-### ASK SOMEONE ABOUT CONVERGENCE ISSUES NEXT TIME WE HAVE THE CHANCE!!!
 
-prop_mod <- lmerTest::lmer(Speech_Prop ~ 0 + Study + Study:Diagnosis + (1 + Diagnosis|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
+prop_mod <- lmerTest::lmer(Speech_Prop ~ Study + Study:Diagnosis + (1|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
 summary(prop_mod)  #No significant effects, and results go in rather different directions.
 
-#Pooled together:
-prop_mod2 <- lmerTest::lmer(Speech_Prop ~ 0 + Diagnosis + (1 + Diagnosis|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
-summary(prop_mod2) # Non-significant.
+#Pooled together, we get a similar result:
+prop_mod2 <- lmerTest::lmer(Speech_Prop ~ Diagnosis + (1|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
+summary(prop_mod2) # Non-significant, and with an effect size extremely close to 0.
 
 ## Speechrate
 
-ggline(scaled_data, x = "Diagnosis", y = "Speechrate",col='Study', add = c("mean_se", "dodge"), palette = "jco")
+ggline(scaled_data, x = "Diagnosis", y = "Speechrate",col='Study', add = c("mean_se", "dodge"), palette = "jco") # Study 6 seems to just barely display a positive effect of diagnosis on speechrate, but most of the studies show varying degrees of negative effects.
 
-sr_mod <- lmerTest::lmer(Speechrate ~ 0 + Study + Study:Diagnosis + (1 + Diagnosis|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
-summary(sr_mod) #Three significant effects + many of the null results go in the expected direction.
+sr_mod <- lmerTest::lmer(Speechrate ~ 0 + Study + Study:Diagnosis + (1|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
+summary(sr_mod) #Three significant effects + many of the null results go in the expected direction. Study 6 shows an effect that is almost 0.
 
-sr_mod2 <- lmerTest::lmer(Speechrate ~ 0 + Diagnosis + (1 + Diagnosis|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
-summary(sr_mod2)
+# If we look at all the data together...
+sr_mod2 <- lmerTest::lmer(Speechrate ~ Diagnosis + (1|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
+summary(sr_mod2) # ...we get a small, but significant, negative effect of schizophrenia on speech rate.
 
 ## Pause Duration
 
-# Since some of the participants have 0 pauses (somehow) on some of their trials, this creates mathematical problems when defining pause duration (division by 0). Thus, we remove all the rows where npause = 0.
-no_zeros <- scaled_data %>% subset(npause != 0)
+# We use the "no_zeros" dataframe created earlier for the pause duration analysis:
 
-no_zeros$Diagnosis <- no_zeros$Diagnosis %>% as.factor()
-no_zeros$Study <- no_zeros$Study %>% as.factor()
+ggline(no_zeros, x = "Diagnosis", y = "P_Dur",col='Study', add = c("mean_se", "dodge"), palette = "jco") # All studies except for study 5 ahow a positive relation between schizophrenia and pause duration; study 5 shows the reverse.
 
-ggline(no_zeros, x = "Diagnosis", y = "P_Dur",col='Study', add = c("mean_se", "dodge"), palette = "jco")
+# We create our model, discriminating first by study:
+pdur_mod <- lmerTest::lmer(P_Dur ~ 0 + Study + Study:Diagnosis + (1|ID), data = no_zeros, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
+summary(pdur_mod) #Mostly positive effects, two of which are significant. One negative effect (Study 5) and one extremely close to 0 (Study 6)
 
-sr_mod <- lmerTest::lmer(Speechrate ~ 0 + Study + Study:Diagnosis + (1 + Diagnosis|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
-summary(sr_mod)
-
-sr_mod2 <- lmerTest::lmer(Speechrate ~ 0 + Diagnosis + (1 + Diagnosis|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
-summary(sr_mod2)
-
-
-#use ggline to make nice line plot. Install ggpubr, if you haven't got it
-pitch_plot <- ggplot(all_data, aes(CV, Diagnosis, colour = Study)); pitch_plot + geom_smooth(method = "lm")
+# If we look at all the data together...
+pdur_mod2 <- lmerTest::lmer(P_Dur ~ Diagnosis + (1|ID), data = no_zeros, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
+summary(pdur_mod2) # ...we get a small, but significant, positive effect of schizophrenia on pause duration.
 
 ```
 
