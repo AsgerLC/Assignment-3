@@ -56,26 +56,24 @@ sr_pred <- glm(Diagnosis ~ 0 + Study + Study:Speechrate, family = "binomial", da
 summary(sr_pred) # Most of the studies have a negative slope (and study 6 has a very small positive one). Of the 7 studies, studies 2,3,4 and 7 show significant relations between speechrate and logOdds of being schizophrenic. SPecifically, as speechrate increases, participants are *slightly* less likely to be schizophrenic.
 
 
-# If we wanted to interpret the results as probabilities, we can use the following function for any given value of speechrate: 
-
-#inv.logit(Intercept + slope*x)
-
 # We have decided to exclude studies that are not in Danish, as by doing so we can decide not to discriminate by study, as the heterogeneity due to different speechrates etc. of different languages is not present. By adding all the danish studies together, we also achieve a larger dataset. We assume that the methodologies (data collection procedures, etc.) of the Danish studies are essentially comparable.
 
 # Filtering study 5, 6 and 7 away.
-DF_df <- scaled_data %>% filter(Study != 5) %>% filter(Study != 6) %>% filter(Study != 7)
+danish_data <- scaled_data %>% filter(Study != 5) %>% filter(Study != 6) %>% filter(Study != 7)
 
 # Now we try to make a model of diagnosis and speechrate using only the danish data.
-sr_danish <- glm(Diagnosis ~ Speechrate, family = "binomial", data = DF_df)
-summary(sr_danish)
+sr_pred <- glm(Diagnosis ~ Speechrate, family = "binomial", data = danish_data)
+summary(sr_pred)
 # Significant results; as speechrate increases, logOdds of schizophrenia decrease.
 
+exp(-0.29826)
+
 # Creating a confusion matrix to estimate performance measures
-DF_df$PredictPerc = inv.logit(predict(sr_danish))
-DF_df$Predictions[DF_df$PredictPerc>0.5] = "Schizophrenia"
-DF_df$Predictions[DF_df$PredictPerc<=0.5] = "Control"
-DF_df$Predictions <- DF_df$Predictions %>% as.factor()
-confusionMatrix(data = DF_df$Predictions, reference = DF_df$Diagnosis, positive = "Schizophrenia") 
+danish_data$PredictPerc = inv.logit(predict(sr_pred))
+danish_data$Predictions[danish_data$PredictPerc>0.5] = "Schizophrenia"
+danish_data$Predictions[danish_data$PredictPerc<=0.5] = "Control"
+danish_data$Predictions <- danish_data$Predictions %>% as.factor()
+confusionMatrix(data = danish_data$Predictions, reference = danish_data$Diagnosis, positive = "Schizophrenia") 
 
 # We get the following performance numbers:
 
@@ -85,7 +83,7 @@ confusionMatrix(data = DF_df$Predictions, reference = DF_df$Diagnosis, positive 
 ### PPV : 0.564
 ### NPV : 0.573
 
-rocCurve <- roc(response = DF_df$Diagnosis, predictor = DF_df$PredictPerc)
+rocCurve <- roc(response = danish_data$Diagnosis, predictor = danish_data$PredictPerc)
 auc(rocCurve)
 ci(rocCurve)
 plot(rocCurve, legacy.axes = TRUE)
@@ -93,20 +91,151 @@ plot(rocCurve, legacy.axes = TRUE)
 #Area under the roc curve: 0.586, CI : 0.56 - 0.611
 
 
+
+### TESTING OTHER COMBINATIONS OF VARIABLES
+
+## Speech Proportion
+prop_pred <- glm(Diagnosis ~ Speech_Prop, family = "binomial", data = danish_data)
+summary(prop_pred)
+
+
+danish_data$PredictPerc = inv.logit(predict(prop_pred))
+danish_data$Predictions[danish_data$PredictPerc>0.5] = "Schizophrenia"
+danish_data$Predictions[danish_data$PredictPerc<=0.5] = "Control"
+danish_data$Predictions <- danish_data$Predictions %>% as.factor()
+confusionMatrix(data = danish_data$Predictions, reference = danish_data$Diagnosis, positive = "Schizophrenia") 
+# Insensitive to schizophrenia.
+
+
+
+## Coefficient of Variance
+CV_pred <- glm(Diagnosis ~ CV, family = "binomial", data = danish_data)
+summary(CV_pred)
+
+
+danish_data$PredictPerc = inv.logit(predict(CV_pred))
+danish_data$Predictions[danish_data$PredictPerc>0.5] = "Schizophrenia"
+danish_data$Predictions[danish_data$PredictPerc<=0.5] = "Control"
+danish_data$Predictions <- danish_data$Predictions %>% as.factor()
+confusionMatrix(data = danish_data$Predictions, reference = danish_data$Diagnosis, positive = "Schizophrenia") 
+
+
+
+
+## Speech Proportion
+prop_pred <- glm(Diagnosis ~ Speech_Prop, family = "binomial", data = danish_data)
+summary(prop_pred)
+
+
+danish_data$PredictPerc = inv.logit(predict(prop_pred))
+danish_data$Predictions[danish_data$PredictPerc>0.5] = "Schizophrenia"
+danish_data$Predictions[danish_data$PredictPerc<=0.5] = "Control"
+danish_data$Predictions <- danish_data$Predictions %>% as.factor()
+confusionMatrix(data = danish_data$Predictions, reference = danish_data$Diagnosis, positive = "Schizophrenia") 
+
+
+## CV * Speechrate
+CV_sr_pred <- glm(Diagnosis ~ CV*Speechrate, family = "binomial", data = danish_data)
+summary(CV_sr_pred)
+
+danish_data$PredictPerc = inv.logit(predict(CV_sr_pred))
+danish_data$Predictions[danish_data$PredictPerc>0.5] = "Schizophrenia"
+danish_data$Predictions[danish_data$PredictPerc<=0.5] = "Control"
+danish_data$Predictions <- danish_data$Predictions %>% as.factor()
+confusionMatrix(data = danish_data$Predictions, reference = danish_data$Diagnosis, positive = "Schizophrenia") 
+
+
+## Speech_prop * Speechrate
+prop_sr_pred <- glm(Diagnosis ~ Speech_Prop*Speechrate, family = "binomial", data = danish_data)
+summary(prop_sr_pred)
+
+danish_data$PredictPerc = inv.logit(predict(prop_sr_pred))
+danish_data$Predictions[danish_data$PredictPerc>0.5] = "Schizophrenia"
+danish_data$Predictions[danish_data$PredictPerc<=0.5] = "Control"
+danish_data$Predictions <- danish_data$Predictions %>% as.factor()
+confusionMatrix(data = danish_data$Predictions, reference = danish_data$Diagnosis, positive = "Schizophrenia") 
+
+
+## Speech_prop * CV
+prop_CV_pred <- glm(Diagnosis ~ Speech_Prop*CV, family = "binomial", data = danish_data)
+summary(prop_CV_pred)
+
+danish_data$PredictPerc = inv.logit(predict(prop_CV_pred))
+danish_data$Predictions[danish_data$PredictPerc>0.5] = "Schizophrenia"
+danish_data$Predictions[danish_data$PredictPerc<=0.5] = "Control"
+danish_data$Predictions <- danish_data$Predictions %>% as.factor()
+confusionMatrix(data = danish_data$Predictions, reference = danish_data$Diagnosis, positive = "Schizophrenia") 
+
+
+## All three
+
+tri_pred <- glm(Diagnosis ~ Speech_Prop*CV*Speechrate, family = "binomial", data = danish_data)
+summary(tri_pred)
+
+danish_data$PredictPerc = inv.logit(predict(tri_pred))
+danish_data$Predictions[danish_data$PredictPerc>0.5] = "Schizophrenia"
+danish_data$Predictions[danish_data$PredictPerc<=0.5] = "Control"
+danish_data$Predictions <- danish_data$Predictions %>% as.factor()
+confusionMatrix(data = danish_data$Predictions, reference = danish_data$Diagnosis, positive = "Schizophrenia") 
+
+#Basically, only Diagnosis ~ CV offers any real improvement on the initial.
+
+### Cross validating the best models.
+
 # Set seed for reproducibility
 set.seed(7)
 
 # Folding the data. "cat_col" specifies a categorical variable that must be balanced in all the folds. "id_col" specifies a variable indicating datapoints belonging to the same ID (thus, they must be in the same fold). This helps us take into account that the experiments is repeated measures (we make up for the fact that we are breaking the asumption of independence).
-danish_folds <- fold(DF_df, k = 10, cat_col = "Diagnosis", id_col = "ID") %>% arrange(.folds)
+danish_folds <- fold(danish_data, k = 10, cat_col = "Diagnosis", id_col = "ID") %>% arrange(.folds)
 
-# Glmer cross validation
-CV2 <- cross_validate(danish_folds, "Diagnosis ~ Speechrate",
+# Glmer cross validation of the Speechrate model
+CV1 <- cross_validate(danish_folds, "Diagnosis ~ Speechrate",
                       fold_cols = '.folds',
                       family = 'binomial')
 # Show results
-summary(CV2)
+summary(CV1)
 
-CV2 %>% select(1:9)
+CV1 %>% select(1:9)
+
+### Balanced Accuracy : 0.562
+### Sensitivity : 0.43
+### Specificity : 0.695
+### PPV : 0.562
+### NPV : 0.573
+### AUC(ROC) : 0.58 (0.554 - 0.605) 
+
+CV1$ROC[[1]] %>% head()
+
+SensSpec <- CV1$ROC[[1]]
+
+plot((1- SensSpec$Specificities), SensSpec$Sensitivities)
+abline(a = 0, b = 1)
+
+
+
+CV1$`Confusion Matrix`[[1]]
+
+# A nested tibble with the confusion matrix. The Pos_ columns tells you whether a row is a True
+# Positive (TP), True Negative (TN), False Positive (FP), or False Negative (FN), depending on
+# which level is the "positive" class. I.e. the level you wish to predict.
+
+
+## Cross-validating the model using Coefficient of Variance
+
+# Set seed for reproducibility
+set.seed(7)
+
+# Folding the data. "cat_col" specifies a categorical variable that must be balanced in all the folds. "id_col" specifies a variable indicating datapoints belonging to the same ID (thus, they must be in the same fold). This helps us take into account that the experiments is repeated measures (we make up for the fact that we are breaking the asumption of independence).
+danish_folds <- fold(danish_data, k = 10, cat_col = "Diagnosis", id_col = "ID") %>% arrange(.folds)
+
+## Cross validating the speechrate model
+CV1 <- cross_validate(danish_folds, "Diagnosis ~ Speechrate",
+                      fold_cols = '.folds',
+                      family = 'binomial')
+# Show results
+summary(CV1)
+
+CV1 %>% select(1:9)
 
 ### Balanced Accuracy : 0.562
 ### Sensitivity : 0.43
@@ -122,6 +251,9 @@ CV2$ROC[[1]] %>% head()
 SensSpec <- CV2$ROC[[1]]
 
 plot((1- SensSpec$Specificities), SensSpec$Sensitivities)
+abline(a = 0, b = 1)
+
+
 
 CV2$`Confusion Matrix`[[1]]
 
@@ -131,14 +263,42 @@ CV2$`Confusion Matrix`[[1]]
 
 
 
-#
 
-danish_folds <- fold(DF_df, k = 10, cat_col = "Diagnosis", id_col = "ID") %>% arrange(.folds)
-danish_folds$Diagnosis <- danish_folds$Diagnosis %>% revalue(c("Control" = "0", "Schizophrenia" = "1")) ; danish_folds$Diagnosis <- danish_folds$Diagnosis %>% as.factor()
+## Cross validating the CV model
+CV2 <- cross_validate(danish_folds, "Diagnosis ~ CV",
+                      fold_cols = '.folds',
+                      family = 'binomial')
+# Show results
+summary(CV2)
+
+CV2 %>% select(1:9)
+
+#Balanced Accuracy 0.5883343
+#Sensitivity 0.5603544
+#Specificity 0.6163142
+#Pos Pred Value 0.5704622
+#Neg Pred Value 0.6065411
+#AUC 0.6170647	
+#Lower CI 0.5918323	
+#Upper CI 0.6422972
+
+
+CV2 %>% select(10:14)
+
+CV2$ROC[[1]] %>% head()
+
+SensSpec <- CV2$ROC[[1]]
+
+plot((1- SensSpec$Specificities), SensSpec$Sensitivities)
+abline(a = 0, b = 1)
 
 
 
+CV2$`Confusion Matrix`[[1]]
+
+# A nested tibble with the confusion matrix. The Pos_ columns tells you whether a row is a True
+# Positive (TP), True Negative (TN), False Positive (FP), or False Negative (FN), depending on
+# which level is the "positive" class. I.e. the level you wish to predict.
 
 
 ```
-

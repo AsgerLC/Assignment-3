@@ -397,7 +397,11 @@ ggline(scaled_data, x = "Diagnosis", y = "CV",col='Study', add = c("mean_se", "d
 # Making a model of the Coefficient of Variance, a measure of pitch variability, with a separate estimate for each study and a random intercept for each participant (to account for the fact that the same participant is measured several times)
 CV_mod <- lmerTest::lmer(CV ~ 0 + Study + Study:Diagnosis + (1|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
 
-summary(CV_mod)  #Not a lot of significant effects of diagnosis (only study 4), but by far most of the null results are in the same direction, indicating an overall effect (if a small one). Schizophrenics on average have a smaller CV in 6 out of 7 studies.
+summary(CV_mod) #Not a lot of significant effects of diagnosis (only study 4), but by far most of the null results are in the same direction, indicating an overall effect (if a small one). Schizophrenics on average have a smaller CV in 6 out of 7 studies.
+
+# Writing a table with the results
+table_CV <- summary(CV_mod)
+write.csv(round(table_CV[["coefficients"]], 3), "Table CV.csv")
 
 # Taking all the data together without discriminating by study, we get:
 
@@ -411,12 +415,18 @@ summary(CV_mod2) # An overall significant effect of Diagnosis on pitch variabili
 ggline(scaled_data, x = "Diagnosis", y = "Speech_Prop",col='Study', add = c("mean_se", "dodge"), palette = "jco") # Ouch. This looks very inconsistent. Let's have a look at the model.
 
 
-prop_mod <- lmerTest::lmer(Speech_Prop ~ Study + Study:Diagnosis + (1|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
+prop_mod <- lmerTest::lmer(Speech_Prop ~ 0 + Study + Study:Diagnosis + (1|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
 summary(prop_mod)  #No significant effects, and results go in rather different directions.
 
 #Pooled together, we get a similar result:
 prop_mod2 <- lmerTest::lmer(Speech_Prop ~ Diagnosis + (1|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
 summary(prop_mod2) # Non-significant, and with an effect size extremely close to 0.
+
+
+
+# Writing a table with the results
+table_prop <- summary(prop_mod)
+write.csv(round(table_prop[["coefficients"]], 3), "Table Speech Prop.csv")
 
 ## Speechrate
 
@@ -428,6 +438,14 @@ summary(sr_mod) #Three significant effects + many of the null results go in the 
 # If we look at all the data together...
 sr_mod2 <- lmerTest::lmer(Speechrate ~ Diagnosis + (1|ID), data = scaled_data, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
 summary(sr_mod2) # ...we get a small, but significant, negative effect of schizophrenia on speech rate.
+
+
+
+# Writing a table with the results
+table_sr <- summary(sr_mod)
+write.csv(round(table_sr[["coefficients"]], 3), "Table Speechrate.csv")
+
+
 
 ## Pause Duration
 
@@ -442,6 +460,15 @@ summary(pdur_mod) #Mostly positive effects, two of which are significant. One ne
 # If we look at all the data together...
 pdur_mod2 <- lmerTest::lmer(P_Dur ~ Diagnosis + (1|ID), data = no_zeros, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE,  optCtrl = list(ftol_abs = 1e-10, xtol_abs = 1e-10, maxeval=10000)))
 summary(pdur_mod2) # ...we get a small, but significant, positive effect of schizophrenia on pause duration.
+
+
+
+# Writing a table with the results
+table_pdur <- summary(pdur_mod)
+write.csv(round(table_pdur[["coefficients"]], 3), "Table Pause-duration.csv")
+
+
+
 
 ```
 
