@@ -1,6 +1,6 @@
 ---
 title: "Assignment 3 - Part 1 - Voice In Schizophrenia"
-author: "Riccardo Fusaroli"
+author: "Jana, Sophia, Dora, Rebecca, Asger"
 date: "August 09, 2019"
 output: html_document
 ---
@@ -144,7 +144,7 @@ read_pitch <- function(filename) {
 
 # test it on just one file while writing the function
 example <- read_pitch("Pitch/Study1D0S101T1_f0.txt")
-
+example2 <- read.delim("Pitch/Study1D0S101T1_f0.txt")
 
 # When you've created a function that works, you can
 setwd("C:/Users/Asger/Desktop/Cognitive Science BA/3. Semester/ExpMeth 3/Assignments/Assignment-3/Pitch/"); pitch_data = list.files(pattern = ".txt") %>% purrr::map_df(read_pitch) ##It is important that you briefly set the working directory to pitch, otherwise map_df doesn't know where to find the files.

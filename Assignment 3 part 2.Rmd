@@ -1,6 +1,6 @@
 ---
 title: "Assignment 3 - Part 2 - Diagnosing Schizophrenia from Voice"
-author: "Riccardo Fusaroli"
+author: "Asger, Rebecca, Dora, Jana, Sophia"
 date: "October 17, 2017"
 output: html_document
 ---
